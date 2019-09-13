@@ -19,7 +19,10 @@ import com.squareup.workflow.Snapshot
 import com.squareup.workflow.StatefulWorkflow
 import com.squareup.workflow.Workflow
 import com.squareup.workflow.WorkflowAction
+import com.squareup.workflow.WorkflowAction.Companion.noAction
 import com.squareup.workflow.debugging.WorkflowHierarchyDebugSnapshot.Child
+import com.squareup.workflow.debugging.WorkflowUpdateDebugInfo.Kind
+import com.squareup.workflow.debugging.WorkflowUpdateDebugInfo.Source
 import com.squareup.workflow.internal.Behavior.WorkflowOutputCase
 import com.squareup.workflow.parse
 import com.squareup.workflow.readByteStringWithLength
@@ -65,6 +68,7 @@ internal class SubtreeManager<StateT, OutputT : Any>(
     @Suppress("UNCHECKED_CAST")
     val childNode = hostLifetimeTracker.ensure(case) as
         WorkflowNode<ChildPropsT, *, ChildOutputT, ChildRenderingT>
+    // TODO figure out how to wire up debug snapshots
     return childNode.render(child.asStatefulWorkflow(), props)
   }
 
@@ -82,19 +86,27 @@ internal class SubtreeManager<StateT, OutputT : Any>(
    * is managing.
    */
   fun <T : Any> tickChildren(
-    selector: SelectBuilder<T?>,
-    handler: (WorkflowAction<StateT, OutputT>) -> T?
+    selector: SelectBuilder<OutputEnvelope<T>>,
+    handler: (WorkflowAction<StateT, OutputT>, Kind) -> OutputEnvelope<T>
   ) {
     for ((case, host) in hostLifetimeTracker.lifetimes) {
       host.tick(selector) { output ->
-        val componentUpdate = case.acceptChildOutput(output)
-        return@tick handler(componentUpdate)
+        if (output.output != null) {
+          val componentUpdate = case.acceptChildOutput(output.output)
+          // This workflow's child emitted a non-null output, this workflow's action was invoked,
+          // meaning we did update ourselves.
+          return@tick handler(componentUpdate, Kind.DidUpdate(Source.Subtree(output.debugInfo)))
+        } else {
+          // The child didn't actually emit an output, which means this workflow has nothing to do,
+          // which means we will only report our child updating.
+          return@tick handler(noAction(), Kind.ChildDidUpdate(output.debugInfo))
+        }
       }
     }
   }
 
-  val childDebugSnapshots: List<Child>
-    get() = hostLifetimeTracker.lifetimes.map { (case, node) ->
+  fun createChildDebugSnapshots(): List<Child> =
+    hostLifetimeTracker.lifetimes.map { (case, node) ->
       Child(case.id.name, node.debugSnapshot)
     }
 

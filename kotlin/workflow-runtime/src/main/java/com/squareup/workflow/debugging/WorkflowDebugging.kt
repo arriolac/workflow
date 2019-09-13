@@ -15,20 +15,4 @@
  */
 package com.squareup.workflow.debugging
 
-/**
- *  TODO write documentation
- */
-data class WorkflowHierarchyDebugSnapshot(
-  val workflowType: String,
-  val stateDescription: LazyString,
-  val children: List<Child>
-) {
-
-  /**
-   *  TODO write documentation
-   */
-  data class Child(
-    val key: String,
-    val snapshot: WorkflowHierarchyDebugSnapshot
-  )
-}
+typealias WorkflowDebugInfo = Pair<WorkflowHierarchyDebugSnapshot, WorkflowUpdateDebugInfo?>

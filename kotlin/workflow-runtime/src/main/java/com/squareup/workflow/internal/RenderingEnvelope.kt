@@ -13,22 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.squareup.workflow.debugging
+package com.squareup.workflow.internal
+
+import com.squareup.workflow.debugging.WorkflowHierarchyDebugSnapshot
 
 /**
- *  TODO write documentation
+ * TODO write documentation
  */
-data class WorkflowHierarchyDebugSnapshot(
-  val workflowType: String,
-  val stateDescription: LazyString,
-  val children: List<Child>
-) {
-
-  /**
-   *  TODO write documentation
-   */
-  data class Child(
-    val key: String,
-    val snapshot: WorkflowHierarchyDebugSnapshot
-  )
-}
+internal data class RenderingEnvelope<R>(
+  val rendering: R,
+  val debugSnapshot: WorkflowHierarchyDebugSnapshot
+)

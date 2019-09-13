@@ -22,6 +22,9 @@ import com.squareup.workflow.WorkflowAction
 import com.squareup.workflow.applyTo
 import com.squareup.workflow.debugging.LazyString
 import com.squareup.workflow.debugging.WorkflowHierarchyDebugSnapshot
+import com.squareup.workflow.debugging.WorkflowUpdateDebugInfo
+import com.squareup.workflow.debugging.WorkflowUpdateDebugInfo.Kind
+import com.squareup.workflow.debugging.WorkflowUpdateDebugInfo.Source
 import com.squareup.workflow.internal.Behavior.WorkerCase
 import com.squareup.workflow.parse
 import com.squareup.workflow.readByteStringWithLength
@@ -79,12 +82,6 @@ internal class WorkflowNode<PropsT, StateT, OutputT : Any, RenderingT>(
       ?: snapshot?.restoreState(initialProps, workflow)
       ?: workflow.initialState(initialProps, snapshot = null)
 
-  /**
-   * This property is only available after the first call to render.
-   */
-  lateinit var debugSnapshot: WorkflowHierarchyDebugSnapshot
-    private set
-
   private var lastProps: PropsT = initialProps
 
   private var behavior: Behavior<StateT, OutputT>? = null
@@ -98,7 +95,7 @@ internal class WorkflowNode<PropsT, StateT, OutputT : Any, RenderingT>(
   fun render(
     workflow: StatefulWorkflow<PropsT, *, OutputT, RenderingT>,
     input: PropsT
-  ): RenderingT =
+  ): RenderingEnvelope<RenderingT> =
     renderWithStateType(workflow as StatefulWorkflow<PropsT, StateT, OutputT, RenderingT>, input)
 
   /**
@@ -124,13 +121,18 @@ internal class WorkflowNode<PropsT, StateT, OutputT : Any, RenderingT>(
    */
   @UseExperimental(InternalCoroutinesApi::class)
   fun <T : Any> tick(
-    selector: SelectBuilder<T?>,
-    handler: (OutputT) -> T?
+    selector: SelectBuilder<OutputEnvelope<T>>,
+    handler: (OutputEnvelope<OutputT>) -> OutputEnvelope<T>
   ) {
-    fun acceptUpdate(action: WorkflowAction<StateT, OutputT>): T? {
+    fun acceptUpdate(
+      action: WorkflowAction<StateT, OutputT>,
+      kind: Kind
+    ): OutputEnvelope<T> {
       val (newState, output) = action.applyTo(state)
       state = newState
-      return output?.let(handler)
+      val info = createDebugInfo(kind)
+      val envelope = OutputEnvelope(output, info)
+      return handler(envelope)
     }
 
     // Listen for any child workflow updates.
@@ -146,10 +148,11 @@ internal class WorkflowNode<PropsT, StateT, OutputT : Any, RenderingT>(
                 // Set the tombstone flag so we don't continue to listen to the subscription.
                 session.tombstone = true
                 // Nothing to do on close other than update the session, so don't emit any output.
-                return@onReceiveOrClosed null
+                val debugInfo = createDebugInfo(Kind.DidUpdate(Source.Worker))
+                return@onReceiveOrClosed OutputEnvelope(null, debugInfo)
               } else {
                 val update = case.acceptUpdate(valueOrClosed.value)
-                acceptUpdate(update)
+                acceptUpdate(update, Kind.DidUpdate(Source.Worker))
               }
             }
           }
@@ -158,10 +161,13 @@ internal class WorkflowNode<PropsT, StateT, OutputT : Any, RenderingT>(
     // Listen for any events.
     with(selector) {
       behavior!!.nextActionFromEvent.onAwait { update ->
-        acceptUpdate(update)
+        acceptUpdate(update, Kind.DidUpdate(Source.External))
       }
     }
   }
+
+  private fun createDebugInfo(kind: Kind): WorkflowUpdateDebugInfo =
+    WorkflowUpdateDebugInfo(id.type.toString(), kind)
 
   /**
    * Cancels this state machine host, and any coroutines started as children of it.
@@ -184,7 +190,7 @@ internal class WorkflowNode<PropsT, StateT, OutputT : Any, RenderingT>(
   private fun renderWithStateType(
     workflow: StatefulWorkflow<PropsT, StateT, OutputT, RenderingT>,
     input: PropsT
-  ): RenderingT {
+  ): RenderingEnvelope<RenderingT> {
     updatePropsAndState(workflow, input)
 
     val context = RealRenderContext(subtreeManager)
@@ -197,14 +203,13 @@ internal class WorkflowNode<PropsT, StateT, OutputT : Any, RenderingT>(
           workerTracker.track(workerCases)
         }
 
-    debugSnapshot = WorkflowHierarchyDebugSnapshot(
-        workflowType = LazyString(id.type::toString),
+    val debugSnapshot = WorkflowHierarchyDebugSnapshot(
+        workflowType = id.type.toString(),
         stateDescription = LazyString(state::toString),
-        children = subtreeManager.childDebugSnapshots,
-        update = null
+        children = subtreeManager.createChildDebugSnapshots()
     )
 
-    return rendering
+    return RenderingEnvelope(rendering, debugSnapshot)
   }
 
   private fun updatePropsAndState(

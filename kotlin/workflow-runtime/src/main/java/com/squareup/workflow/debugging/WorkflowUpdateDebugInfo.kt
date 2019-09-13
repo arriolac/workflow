@@ -19,7 +19,7 @@ package com.squareup.workflow.debugging
  * TODO write documentation
  */
 data class WorkflowUpdateDebugInfo(
-  val workflowType: LazyString,
+  val workflowType: String,
   val kind: Kind
 ) {
 
@@ -30,7 +30,7 @@ data class WorkflowUpdateDebugInfo(
     // TODO more kotliny names
     data class DidUpdate(val source: Source) : Kind()
 
-    data class ChildDidUpdate(val info: WorkflowUpdateDebugInfo) : Kind()
+    data class ChildDidUpdate(val childInfo: WorkflowUpdateDebugInfo) : Kind()
   }
 
   /**
@@ -39,6 +39,6 @@ data class WorkflowUpdateDebugInfo(
   sealed class Source {
     object External : Source()
     object Worker : Source()
-    data class Subtree(val info: WorkflowUpdateDebugInfo) : Source()
+    data class Subtree(val childInfo: WorkflowUpdateDebugInfo) : Source()
   }
 }
