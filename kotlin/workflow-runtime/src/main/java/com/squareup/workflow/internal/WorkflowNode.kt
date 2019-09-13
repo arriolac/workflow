@@ -20,6 +20,8 @@ import com.squareup.workflow.StatefulWorkflow
 import com.squareup.workflow.Workflow
 import com.squareup.workflow.WorkflowAction
 import com.squareup.workflow.applyTo
+import com.squareup.workflow.debugging.LazyString
+import com.squareup.workflow.debugging.WorkflowHierarchyDebugSnapshot
 import com.squareup.workflow.internal.Behavior.WorkerCase
 import com.squareup.workflow.parse
 import com.squareup.workflow.readByteStringWithLength
@@ -76,6 +78,12 @@ internal class WorkflowNode<PropsT, StateT, OutputT : Any, RenderingT>(
   private var state: StateT = initialState
       ?: snapshot?.restoreState(initialProps, workflow)
       ?: workflow.initialState(initialProps, snapshot = null)
+
+  /**
+   * This property is only available after the first call to render.
+   */
+  lateinit var debugSnapshot: WorkflowHierarchyDebugSnapshot
+    private set
 
   private var lastProps: PropsT = initialProps
 
@@ -188,6 +196,13 @@ internal class WorkflowNode<PropsT, StateT, OutputT : Any, RenderingT>(
           subtreeManager.track(childCases)
           workerTracker.track(workerCases)
         }
+
+    debugSnapshot = WorkflowHierarchyDebugSnapshot(
+        workflowType = LazyString(id.type::toString),
+        stateDescription = LazyString(state::toString),
+        children = subtreeManager.childDebugSnapshots,
+        update = null
+    )
 
     return rendering
   }

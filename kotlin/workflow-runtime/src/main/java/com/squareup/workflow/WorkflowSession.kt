@@ -1,5 +1,6 @@
 package com.squareup.workflow
 
+import com.squareup.workflow.debugging.WorkflowHierarchyDebugSnapshot
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -7,5 +8,6 @@ import kotlinx.coroutines.flow.Flow
  */
 class WorkflowSession<out OutputT : Any, out RenderingT>(
   val renderingsAndSnapshots: Flow<RenderingAndSnapshot<RenderingT>>,
-  val outputs: Flow<OutputT>
+  val outputs: Flow<OutputT>,
+  val debugSnapshots: Flow<WorkflowHierarchyDebugSnapshot>
 )

@@ -19,6 +19,7 @@ import com.squareup.workflow.Snapshot
 import com.squareup.workflow.StatefulWorkflow
 import com.squareup.workflow.Workflow
 import com.squareup.workflow.WorkflowAction
+import com.squareup.workflow.debugging.WorkflowHierarchyDebugSnapshot.Child
 import com.squareup.workflow.internal.Behavior.WorkflowOutputCase
 import com.squareup.workflow.parse
 import com.squareup.workflow.readByteStringWithLength
@@ -91,6 +92,11 @@ internal class SubtreeManager<StateT, OutputT : Any>(
       }
     }
   }
+
+  val childDebugSnapshots: List<Child>
+    get() = hostLifetimeTracker.lifetimes.map { (case, node) ->
+      Child(case.id.name, node.debugSnapshot)
+    }
 
   /**
    * Returns a [Snapshot] that contains snapshots of all children, associated with their IDs.
